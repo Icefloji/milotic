@@ -1,0 +1,32 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[ ]:
+
+
+def find_paths(data, target):
+    # 查询函数
+    paths = []
+
+    def recursive_search(obj, path='tk'):
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                new_path = f'{path}["{k}"]'
+                if str(v).startswith(target):
+                    print(v)
+                    paths.append(new_path)
+                else:
+                    recursive_search(v, new_path)
+        elif isinstance(obj, list):
+            for idx, item in enumerate(obj):
+                new_path = f'{path}[{idx}]'
+                recursive_search(item, new_path)
+
+    recursive_search(data)
+    for p in paths:
+        print(p)
+    return paths
+
+
+# find_paths(tk,target='7')
+
