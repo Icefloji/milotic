@@ -1,18 +1,18 @@
 import json
 import socket
 from pathlib import Path
-from typing import Literal
+from typing import Generator
 
 import uvicorn
 from fastapi import FastAPI
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 from starlette.middleware.cors import CORSMiddleware
 
-# ruff:noqa: F401
+# ruff:noqa: F401 B006
 from citra.service.funasr import router as asr_router
+from citra.service.rag import router as rag_router
 from citra.service.ticket import router as tik_router
 from citra.ticket.recognize import produce_answer
 
@@ -61,26 +61,36 @@ async def hello():
 
 # app.include_router(asr_router, prefix='/asr', tags=['asr'])
 app.include_router(tik_router, tags=['inspection'])
+# app.include_router(rag_router, tags=['knowledge_base'])
 
 
+def gen_to_sse(gen):
+    yield 'event: start\ndata: {start}\n\n'
+    for chunk in gen:
+        yield f'event: message\ndata: {chunk}\n\n'
+    yield 'event: end\ndata: {end}\n\n'
+
+
+##这里开始看
 @app.post('/ai_question', summary='AI问数', description='输入用户的问题，返回数据库结果')
-async def ask_outage(question: str) -> dict:
-    from citra.mcp.outage import ask_outage
+async def ask_outage(body: dict = {'question': ''}):
+    from citra.mcp.query_db import ask_question
 
     try:
-        answer = ask_outage(question)
+        print(body['question'])
+        res_gen = ask_question(body['question'])
+        res_sse = gen_to_sse(res_gen)
+        return StreamingResponse(res_sse, media_type='text/event-stream')
     except Exception as e:
-        return {'status': 'fail', 'error': str(e)}
-    return {'status': 'success', 'answer': answer}
+        return 'error' + str(e)
 
 
-@app.get('/rag_question', summary='知识库查询', description='用户提问，根据知识库返回查询结果')
-async def ask_question(question: str):
-    import time
+@app.post('/chat', summary='闲聊')
+async def chat_with_me(body: dict = {'question': ''}):
+    from citra.talk_to_me import talk
 
-    from citra.rag.rag_query import ask_rag
-
-    return StreamingResponse(ask_rag(question), media_type='text/event-stream')
+    answer = gen_to_sse(talk(body['question']))
+    return StreamingResponse(answer)
 
 
 def find_available_port(start_port: int):
@@ -96,4 +106,4 @@ def find_available_port(start_port: int):
 
 if __name__ == '__main__':
     available_port = find_available_port(8000)
-    uvicorn.run('citra.service.main:app', host='0.0.0.0', port=available_port, reload=True)
+    uvicorn.run(app, host='0.0.0.0', port=available_port)

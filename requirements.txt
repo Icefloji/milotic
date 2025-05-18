@@ -1,9 +1,0 @@
-pandas
-ipykernel
-openai
-langchain
-funasr
-fastapi
-uvicorn
-python-dotenv
-python-multipart

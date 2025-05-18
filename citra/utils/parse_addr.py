@@ -2,8 +2,6 @@ import re
 
 import pandas as pd
 
-ROOT_DIR = 'e:/code/python/WangXiang'
-
 
 def cut_head(s: str) -> str:
     pat_ignore = r'[^\u4e00-\u9fa5]*([\u4e00-\u9fa5\d]*)[^\u4e00-\u9fa5\d]?'
@@ -19,7 +17,7 @@ def cut_head(s: str) -> str:
 
 
 filename = '95598-1.xlsx'
-df1: pd.Series = pd.read_excel(f'{ROOT_DIR}/data/address/{filename}').iloc[:, 0]
+df1: pd.Series = pd.read_excel(f'data/address/{filename}').iloc[:, 0]
 df2: pd.Series = df1.apply(cut_head)
 
 prov_town = r'(?P<省>[^省]{2,5}(省|自治区))?(?P<市>[^市]{2,3}市)?(?P<县>[\u4e00-\u9fa5]{2,4}(县|市|区))?(?P<街道>[\u4e00-\u9fa5]{2,4}(街道|镇))?'  # noqa: E501
@@ -66,7 +64,6 @@ df3: pd.DataFrame = df2.apply(extract).apply(pd.Series)
 
 
 df3['raw'] = df1
-# 改名字，删除列
 df3.columns = ['省', '市', '县', '街道', '行政村', '自然村', '路', '号', '区', '无用', 'raw']
 df3 = df3.drop(columns=['无用'])
-df3.to_excel(f'{ROOT_DIR}/data/address/parse_{filename}', index=False)
+df3.to_excel(f'data/address/parse_{filename}', index=False)

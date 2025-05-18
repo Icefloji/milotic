@@ -11,32 +11,6 @@ def get_person_change(person_list: list[dict]):
     return sorted(filter_list, key=lambda x: x['addStaffSignTime'])
 
 
-# %%
-def find_paths(data, target):
-    # 查询函数
-    paths = []
-
-    def recursive_search(obj, path='tk'):
-        if isinstance(obj, dict):
-            for k, v in obj.items():
-                new_path = f'{path}["{k}"]'
-                if str(v).startswith(target):
-                    print(v)
-                    paths.append(new_path)
-                else:
-                    recursive_search(v, new_path)
-        elif isinstance(obj, list):
-            for idx, item in enumerate(obj):
-                new_path = f'{path}[{idx}]'
-                recursive_search(item, new_path)
-
-    recursive_search(data)
-    for p in paths:
-        print(p)
-    return paths
-
-
-# find_paths(tk,target='7')
 newline = '\n'
 
 
@@ -136,13 +110,3 @@ def get_ticket(ticket_type: str, json_tk: dict) -> str:
     else:
         instance = 'blank'
     return instance
-
-
-# %%
-if __name__ == '__main__':
-    import json
-    from pathlib import Path
-
-    tk = json.load(Path('E:/code/python/WangXiang/data/ticket/breakfix', 'ticket.json').open('r', encoding='utf-8'))[
-        'result'
-    ]
