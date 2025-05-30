@@ -91,7 +91,7 @@ def get_breakfix(tk: dict) -> str:
     风险等级：{tk['SGEmergencyRepairWorkticket'][0]['riskLevel']}
 
     2 抢修班人员（不包括抢修工作负责人）：
-    {tk['SGEmergencyRepairWorkticket'][0]['workingPerson']} 共
+    {tk['SGEmergencyRepairWorkticket'][0]['workingPerson']} 共{tk['SGEmergencyRepairWorkticket'][0]['number']}人
 
     3 抢修工作任务
     |工作地点(地段)或设备|  工作内容|
@@ -107,6 +107,6 @@ def get_ticket(ticket_type: str, json_tk: dict) -> str:
         instance = get_ticket1(json_tk)
     elif ticket_type == 'ticket2':
         instance = get_ticket2(json_tk)
-    else:
-        instance = 'blank'
+    elif ticket_type == 'breakfix':
+        instance = get_breakfix(json_tk)
     return instance

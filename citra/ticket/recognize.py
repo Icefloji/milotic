@@ -7,7 +7,7 @@ from pathlib import Path
 from ollama import ChatResponse, chat
 from openai import OpenAI
 
-ROOT_DIR = 'E:/code/python/WangXiang' or os.getenv('ROOT_DIR')
+ROOT_DIR = os.getenv('ROOT_DIR')
 
 
 # %%
@@ -78,7 +78,7 @@ def convert_json(answer: str) -> list:
 
 # %%
 def get_rule(ticket_type: str) -> str:
-    rule_path = Path(ROOT_DIR, 'data/ticket/', ticket_type, 'rule.txt')
+    rule_path = Path('data/ticket/', ticket_type, 'rule.txt')
     with rule_path.open('r', encoding='utf-8') as rf:
         rule = rf.read()
     return rule
@@ -87,6 +87,7 @@ def get_rule(ticket_type: str) -> str:
 # %%
 def rec_re(ticket_type: str, tk: dict) -> list:
     results = []
+    print(ticket_type)
     if ticket_type == 'ticket1':
         from citra.ticket.regex import rec_re_ticket1
 
@@ -120,14 +121,14 @@ def produce_answer(json_dict: dict, ticket_type: str, rec_method: str = 're') ->
             ans_json = convert_json(answer)
         elif rec_method == 're':
             ans_json = rec_re(ticket_type, tk)
-    except Exception as e:
-        raise Exception(f'error occurs when recognizing ticket:{e}')  # noqa: B904
+    except KeyError as e:
+        raise Exception('识别过程遇到错误，检查工作票类型') from e
     return ans_json
 
 
 # %%
 if __name__ == '__main__':
-    json_str = open(r'E:/code/python/WangXiang/data/ticket/ticket.json', encoding='utf-8').read()
+    json_str = open(r'E:/code/python/milotic/data/ticket/ticket2/ticket.json', encoding='utf-8').read()
     tk = json.loads(json_str)['result']
-    res = produce_answer(tk, 'ticket1', rec_method='re')
+    res = produce_answer(tk, 'ticket2', rec_method='re')
     print(res)

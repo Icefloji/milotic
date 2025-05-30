@@ -21,11 +21,11 @@ with_message_history = RunnableWithMessageHistory(model, get_session_history)
 config = {'configurable': {'session_id': 'abc2'}}
 
 
-def talk(message: str):
-    config = {'configurable': {'session_id': 'abc2'}}
+def talk(message: str, id: str = 'abc2'):
+    config = {'configurable': {'session_id': id}}
     output = with_message_history.stream(message, config=config)
     for i in output:
-        yield json.dumps({'type': 'msg', 'content': i.content}, ensure_ascii=False)
+        yield {'type': 'msg', 'content': i.content}
 
 
 if __name__ == '__main__':

@@ -1,25 +1,15 @@
-from contextlib import asynccontextmanager
-
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
-from citra.rag.rag_query import ask_rag, load_retriever
+from citra.rag.query_rag import query_knowledge_base
+from citra.service.protocol import gen_to_sse
 
-retriever = None
-
-
-@asynccontextmanager
-async def asr_lifespan(app: FastAPI):
-    # Load the ML model
-    global retriever
-    retriever = load_retriever()
-    yield
-    # Clean up the ML models and release the resources
+router = APIRouter()
 
 
-router = APIRouter(lifespan=asr_lifespan)
-
-
-@router.get('/rag_question', summary='知识库查询', description='用户提问，根据知识库返回查询结果')
-async def ask_question(question: str):
-    return StreamingResponse(ask_rag(retriever, question), media_type='text/event-stream')
+@router.post('/rag_question', summary='知识库查询', description='用户提问，根据知识库返回查询结果')
+async def ask_question(request: Request, body: dict[str, str] = {'question': ''}):
+    service_ip = str(request.base_url)
+    answer = query_knowledge_base(service_ip, body['question'])
+    res_sse = gen_to_sse(answer)
+    return StreamingResponse(res_sse, media_type='text/event-stream')

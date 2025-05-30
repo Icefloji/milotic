@@ -9,23 +9,26 @@ from citra.ticket.recognize import produce_answer
 
 class TicketDict(BaseModel):
     ticket_type: str = Field('ticket1', description='票类型', title='tic')
-    rec_method: str = Field('re', description='识别方阿飞', title='tic')
+    rec_method: str = Field('re', description='识别方法', title='tic')
     ticket_dict: dict
 
     @field_validator('ticket_type')
-    def tik_category(cls, tc):
+    @staticmethod
+    def tik_category(tc):
         if tc not in {'ticket1', 'ticket2', 'breakfix'}:
             raise ValueError('invalid ticket type')
         return tc
 
     @field_validator('rec_method')
-    def tik_method(cls, tm):
+    @staticmethod
+    def tik_method(tm):
         if tm not in {'re', 'ai'}:
             raise ValueError('invalid ticket type')
         return tm
 
     @field_validator('ticket_dict')
-    def check_dict(cls, td):
+    @staticmethod
+    def check_dict(td):
         if 'result' not in td:
             raise ValueError('dict without item result')
         return td
@@ -63,7 +66,7 @@ def find_key_value(data, target_key):
 async def inspect_ticket(tic: TicketDict) -> dict:
     response = TicketRes(status='fail')
     try:
-        id = find_key_value(tic.ticket_dict, 'workTicketId')
+        id = find_key_value(tic.ticket_dict, 'workTicketCode')
         if id is None:
             response.message = 'workTicketId not found in the ticket'
             raise KeyError(response.message)
@@ -74,5 +77,5 @@ async def inspect_ticket(tic: TicketDict) -> dict:
         response.ticket_type = tic.ticket_type
         response.error_count = len(response.errors)
     except Exception as e:
-        response.message = f'error occurs when recognizing ticket:{e}'
+        response.message = f'error occurs when recognizing ticket, {e}'
     return json.loads(response.model_dump_json())

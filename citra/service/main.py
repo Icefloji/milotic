@@ -1,21 +1,18 @@
-import json
 import socket
 from pathlib import Path
-from typing import Generator
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.openapi.docs import get_swagger_ui_html
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 
-# ruff:noqa: F401 B006
-from citra.service.funasr import router as asr_router
+from citra.service.protocol import gen_to_sse
 from citra.service.rag import router as rag_router
 from citra.service.ticket import router as tik_router
-from citra.ticket.recognize import produce_answer
 
+# ruff:noqa: F401 B006
 app = FastAPI(docs_url=None)
 
 app.add_middleware(
@@ -37,12 +34,13 @@ def resource_path(relative_path):
     return Path(relative_path).resolve()
 
 
-static_dir = resource_path('citra/service/static')
-app.mount('/static', StaticFiles(directory=static_dir), name='static')
+app.mount('/static', StaticFiles(directory=resource_path('citra/service/static')), name='static')
+app.mount('/cache', StaticFiles(directory=resource_path('citra/service/cache')), name='cache')
+app.mount('/knowledge_base', StaticFiles(directory=resource_path('data/rag')), name='knowbase')
 
 
 @app.get('/docs', include_in_schema=False)
-async def custom_swagger_ui_heml():
+async def custom_swagger_ui_html():
     return get_swagger_ui_html(
         openapi_url=str(app.openapi_url),
         title=app.title + '-swagger-ui',
@@ -51,46 +49,44 @@ async def custom_swagger_ui_heml():
     )
 
 
-# 挂载结束
-
-
 @app.get('/')
 async def hello():
-    return {'message': 'Hello, Citra!'}
+    return 'hello world!'
 
 
-# app.include_router(asr_router, prefix='/asr', tags=['asr'])
-app.include_router(tik_router, tags=['inspection'])
-# app.include_router(rag_router, tags=['knowledge_base'])
+@app.get('/client')
+async def get_client_ip(request: Request):
+    client_host = request.base_url
+    return {'client_ip': client_host}
 
 
-def gen_to_sse(gen):
-    yield 'event: start\ndata: {start}\n\n'
-    for chunk in gen:
-        yield f'event: message\ndata: {chunk}\n\n'
-    yield 'event: end\ndata: {end}\n\n'
+# app.include_router(tik_router, tags=['inspection'])
+app.include_router(rag_router, tags=['knowledge_base'])
 
 
 ##这里开始看
 @app.post('/ai_question', summary='AI问数', description='输入用户的问题，返回数据库结果')
 async def ask_outage(body: dict = {'question': ''}):
-    from citra.mcp.query_db import ask_question
+    from citra.mcp.query_db import consult_database
 
     try:
         print(body['question'])
-        res_gen = ask_question(body['question'])
+        res_gen = consult_database(body['question'])
         res_sse = gen_to_sse(res_gen)
         return StreamingResponse(res_sse, media_type='text/event-stream')
     except Exception as e:
-        return 'error' + str(e)
+        from citra.service.protocol import str_to_gen
+
+        error = str_to_gen(f'Error: {e}', chunk_size=1000)
+        return StreamingResponse(gen_to_sse(error, event_type='err'), media_type='text/event-stream')
 
 
 @app.post('/chat', summary='闲聊')
-async def chat_with_me(body: dict = {'question': ''}):
-    from citra.talk_to_me import talk
+async def chat_with_me(body: dict = {'question': '', 'id': 'abc2'}):
+    from citra.chat_with_me import talk
 
-    answer = gen_to_sse(talk(body['question']))
-    return StreamingResponse(answer)
+    answer = gen_to_sse(talk(body['question'], body['id']))
+    return StreamingResponse(answer, media_type='text/event-stream')
 
 
 def find_available_port(start_port: int):

@@ -1,92 +1,104 @@
-import json
-from typing import Any
+# %%
+import datetime
+from typing import Annotated, Literal
 
-from langchain_community.chat_models import ChatTongyi  # noqa:F401
-from langchain_core.messages import AIMessage, HumanMessage
-from langchain_ollama.chat_models import ChatOllama
+import pandas as pd
+import pymysql
+from langchain_community.chat_models import ChatTongyi  #  noqa: F401
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
+from langchain_ollama.chat_models import ChatOllama  #  noqa: F401
+from typing_extensions import TypedDict
 
-from citra.mcp.tool import get_connection, sql_order_fault, sql_outage
+from citra.mcp.tool import get_connection, sql_outage
 
 conn = get_connection()
 
 
 # %%
-def to_markdown(cols: list, rows: tuple[tuple[Any, ...], ...]):
-    if len(cols) != len(rows[0]):
-        raise ValueError('列数和行数不匹配')
-    headers = '| ' + ' | '.join(cols) + ' |\\n'
-    seps = '| ' + ' | '.join(['---'] * len(cols)) + ' |\\n'
-    yield json.dumps({'type': 'table', 'content': headers}, ensure_ascii=False)
-    yield json.dumps({'type': 'table', 'content': seps}, ensure_ascii=False)
-    for row in rows:
-        r = '| ' + ' | '.join(str(cell) for cell in row) + ' |\\n'
-        yield json.dumps({'type': 'table', 'content': r}, ensure_ascii=False)
+model = ChatTongyi(model='qwen-max', temperature=0.7)
+# model = ChatOllama(model='qwen3:8b', temperature=0.7)
+tools = [sql_outage]
+
+chat_with_tools = model.bind_tools(tools)
+
+# %%
+
+
+class QueryFormat(TypedDict):
+    format: Annotated[Literal['excel', 'image', 'markdown'], '判断查询返回的格式。默认为markdown，可选excel,image']  # noqa: E501
+
+
+model_with_format = model.with_structured_output(QueryFormat)
+
+
+# %%
+def call_tools(ai_msg: AIMessage) -> ToolMessage:
+    """Simple sequential tool calling helper."""
+    tool_map = {tool.name: tool for tool in tools}
+    select_tool = tool_map[ai_msg.tool_calls[0]['name']]
+    tool_msg = select_tool.invoke(ai_msg.tool_calls[0])
+    return tool_msg
 
 
 def str_to_gen(s: str, *, msg_type: str = 'msg', chunk_size: int = 10):
     """将字符串转换为生成器"""
     for i in range(0, len(s), chunk_size):
-        yield json.dumps({'type': 'msg', 'content': s[i : i + chunk_size]}, ensure_ascii=False)
+        yield {'type': msg_type, 'content': s[i : i + chunk_size]}
 
 
 def execute_sql(sql: str):
-    """执行sql语句，返回结果"""
-
-    if sql == '':
-        return '生成sql失败'
+    """执行sql语句"""
     with conn.cursor() as cursor:
         try:
             cursor.execute(sql)
-            results = cursor.fetchall()
-            if not results:
-                yield json.dumps({'type': 'err', 'content': '没有查询到数据'}, ensure_ascii=False)
-                return
-            cols = [desc[0] for desc in cursor.description]
-            yield from to_markdown(cols, results)
-        except Exception:
-            yield json.dumps({'type': 'err', 'content': '查询出错'}, ensure_ascii=False)
+        except pymysql.err.ProgrammingError as e:
+            raise ValueError('查询过程出错，请重试') from e
+        results = cursor.fetchall()
+        cols = [desc[0] for desc in cursor.description]
+        # cols = [col_dict.get(c,c) for c in cols]
+        df = pd.DataFrame(results, columns=cols)
+        df.fillna('', inplace=True)
+    return df
 
 
-# %%
-# chatllm = ChatTongyi(model='qwen-max', temperature=0.7)
-try:
-    chatllm = ChatOllama(model='qwen2.5:3b', temperature=0.7)
-except Exception as e:
-    raise Exception('服务未启动') from e
-tools = [sql_outage, sql_order_fault]
+def consult_database(question: str):
+    """根据问题生成sql查询语句，然后执行查询并返回结果，并修改为不同的格式"""
 
-chat_with_tools = chatllm.bind_tools(tools)
+    now = datetime.date.today()
+    question = f'今天是{str(now)},{question}'
+    messages: list[BaseMessage] = [HumanMessage(content=question)]
+    ai_msg = chat_with_tools.invoke(question)
+    if not ai_msg.tool_calls:  # type: ignore
+        print('没有调用工具')
+        yield from str_to_gen(ai_msg.content, chunk_size=5)  # type: ignore
+    else:
+        print('调用工具')
+        import uuid
 
-
-def call_tools(msg: AIMessage):
-    """Simple sequential tool calling helper."""
-    tool_map = {t.name: t for t in tools}
-    tool_calls = msg.tool_calls.copy()
-    for tool_call in tool_calls:
-        tool_call['output'] = tool_map[tool_call['name']].invoke(tool_call['args'])  # type: ignore
-    return tool_calls
-
-
-def ask_question(question: str):
-    """问数据库问题"""
-    try:
-        from datetime import date
-
-        now = date.today()
-        question = f'今天是{str(now)}，{question}'
-        ai_msg = chat_with_tools.invoke([HumanMessage(content=question)])
-        if not ai_msg.tool_calls:  # type: ignore
-            print('没有调用工具')
-            yield from str_to_gen(ai_msg.content)  # type: ignore
+        query: str = call_tools(ai_msg).content  # type: ignore
+        print(query)
+        df_res = execute_sql(query)
+        if df_res.size == 0:
+            yield {'type': 'msg', 'content': '没有查询到数据,请补充问题'}
+            return
+        # 根据返回的结果类型，返回不同的格式
+        # messages.append(AIMessage(content=df_res.to_string(index=False)[:100]))
+        # yield from model.stream([SystemMessage('根据用户问题，和数据库查询结果，生成数据描述')] + messages)
+        return_type = model_with_format.invoke(question)
+        if return_type is None:
+            return_type = 'markdown'
         else:
-            print('调用工具')
-            query = call_tools(ai_msg)[0]['output']  # type: ignore
-            print(query)
-            yield from execute_sql(query)
-    except Exception as e:
-        print(f'遇到错误: {e}')
+            return_type = return_type['format']
+        print(return_type)
+        if return_type == 'markdown':
+            yield {'type': 'markdown', 'content': df_res.to_markdown(index=False)}
+        elif return_type == 'excel':
+            tab_name = uuid.uuid4().hex
+            df_res.to_excel(f'citra/service/cache/{tab_name}.xlsx', index=False)
+            yield {'type': 'excel', 'content': f'/cache/{tab_name}.xlsx'}
+        elif return_type == 'image':
+            import dataframe_image as dfi
 
-
-if __name__ == '__main__':
-    for i in ask_question('江山供电公司这个月的故障信息'):
-        print(i, end='')
+            df_name = uuid.uuid4().hex
+            dfi.export(df_res, f'citra/service/cache/{df_name}.png')
+            yield {'type': 'image', 'content': f'/cache/{df_name}.png'}

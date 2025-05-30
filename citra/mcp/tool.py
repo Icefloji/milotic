@@ -11,7 +11,7 @@ def get_connection():
     import pymysql
 
     global conn
-    if conn is None or not conn.open:
+    if conn is None:
         try:
             conn = pymysql.connect(
                 host='192.168.31.175',
@@ -22,47 +22,34 @@ def get_connection():
             )
             print('数据库连接成功')
         except pymysql.MySQLError as e:
-            raise Exception(f'数据库连接失败: {e}') from e
+            print(f'数据库连接失败: {e}')
+            raise RuntimeError(f'数据库连接失败: {e}') from e
     return conn
 
 
 @tool
 def sql_outage(sql: str) -> str:
-    """生成关于停电信息的sql查询语句。表结构：TABLE( \
-        t_event_alarm_inter (equipName 设备名称,lineName 线路名称,faultType 停电类型,\
+    """生成停电信息的sql查询。表结构，t_event_alarm_inter (
+        equipName 设备名称,lineName 线路名称,faultType 停电类型,\
         occurTime 停电开始时间,endTime 停电结束时间,
-        gdsName 供电所名称，unitName 供电公司名称)。"""
-    sql = sql.replace('`', '').replace('\\n', ' ')
-    search = re.search(r'((select|SELECT)[^"]+)', sql)
-    if search:
-        sql = search.group()
-        if ' * ' in sql:
-            sql = sql.replace(
-                '*',
-                'equipName as 设备名称, lineName as 线路名称, faultType as 停电类型, occurTime as 停电开始时间, \
-                    endTime as 停电结束时间, gdsName as 供电所名称, unitName as 供电公司名称',
-            )
-        return sql
-    return ''
+        gdsName 供电所名称，unitName 供电公司名称).str
+        """
+    match = re.match(r'\s*(select|SELECT)\s+\*\s+(from|FROM)\s+', sql)
+    if match:
+        sql = sql.replace(' * ', ' equipName , lineName ,faultType , occurTime,endTime ,gdsName ,unitName ', 1)
+    return sql
 
 
 @tool
 def sql_order_fault(sql: str) -> str:
-    """生成关于工单故障的sql查询语句。只输出给定字段，用as替代表名。表结构为 TABLE t_fault_order_inter (
-    work_order_id 工单号, received_time 受理时间,  address  地址,
-    issue_description  受理内容,phone_number 联系电话,contact_person 联系人,
+    """生成工单故障的sql查询。表结构，t_fault_order_inter (
+    work_order_id 工单号, received_time 受理时间,  address  地址,contact_person 联系人,
     analysis_result 分析结果, order_type 工单类型, unit_name 单位,
-    power_supply_station 供电所）。"""
-    sql = sql.replace('`', '').replace('\\n', ' ')
-    search = re.search(r'((select|SELECT)[^"]+)', sql)
-    if search:
-        sql = search.group()
-        if ' * ' in sql:
-            sql = sql.replace(
-                '*', 'work_order_id as 工单号, received_time as 受理时间, address as 地址,contact_person as 联系人'
-            )
-        return sql
-    return ''
+    power_supply_station 供电所）"""
+    match = re.match(r'\s*(select|SELECT)\s+\*\s+(from|FROM)\s+', sql)
+    if match:
+        sql = sql.replace(' * ', ' work_order_id , received_time , address ,contact_person ', 1)
+    return sql
 
 
 @tool
